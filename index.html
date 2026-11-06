@@ -69,7 +69,7 @@ tr.vd td{text-decoration:line-through;color:var(--mut)}
   <nav><button data-t="sell">🛒 Vender</button><button data-t="prod">📦 Productos</button><button data-t="hist">🧾 Ventas</button></nav>
 
   <section id="v-sell"><div class="sg">
-    <div><div class="bar"><input id="sq" type="search" placeholder="Buscar producto para vender…"></div><div class="grid" id="gr"></div></div>
+    <div><div class="bar"><input id="sc" inputmode="none" autocomplete="off" placeholder="📷 Escanear código de barras…"><input id="sq" type="search" placeholder="Buscar por nombre o código…"></div><div id="sm" class="note"></div><div class="grid" id="gr"></div></div>
     <div class="cart"><b>Venta actual</b><div id="cl"></div><div class="tot" id="ct">$0</div>
       <input id="cu" placeholder="Cliente (opcional)">
       <div class="row"><div><label>Pago</label><select id="cp"><option>Efectivo</option><option>Tarjeta</option><option>Transferencia</option></select></div><div><label>Recibido</label><input id="cr" type="number" inputmode="decimal"></div></div>
@@ -96,7 +96,7 @@ tr.vd td{text-decoration:line-through;color:var(--mut)}
 
 <div class="modal" id="m1"><div class="box">
   <h2 id="mt">Producto</h2>
-  <label>Nombre</label><input id="fn" placeholder="Ej: Lomo de res">
+  <label>Código de barras (escanéalo aquí)</label><input id="fb" autocomplete="off" placeholder="Escanea o escribe el código"><label>Nombre</label><input id="fn" placeholder="Ej: Lomo de res">
   <div class="row"><div><label>Categoría</label><input id="fcat" list="cats" placeholder="Res, Cerdo…"><datalist id="cats"><option>Res</option><option>Cerdo</option><option>Pollo</option><option>Embutidos</option><option>Otros</option></datalist></div>
   <div><label>Unidad</label><select id="fu"><option>kg</option><option>lb</option><option>und</option></select></div></div>
   <div class="row"><div><label>Costo</label><input id="fc1" type="number" inputmode="decimal" min="0"></div><div><label>Venta</label><input id="fv" type="number" inputmode="decimal" min="0"></div></div>
@@ -135,14 +135,14 @@ function chk(r){if(r.error)throw r.error}
 async function pull(){
   var r=await Promise.all([sb.from('products').select('*'),sb.from('sales').select('*').order('n',{ascending:false}),sb.from('settings').select('*').maybeSingle()]);
   chk(r[0]);chk(r[1]);chk(r[2]);
-  items=r[0].data.map(function(x){return{id:x.id,name:x.name,cat:x.cat,unit:x.unit,cost:+x.cost,price:+x.price,stock:+x.stock}});
+  items=r[0].data.map(function(x){return{id:x.id,code:x.barcode||'',name:x.name,cat:x.cat,unit:x.unit,cost:+x.cost,price:+x.price,stock:+x.stock}});
   sales=r[1].data.map(function(x){return{n:x.n,t:Date.parse(x.t),lines:x.lines,total:+x.total,profit:+x.profit,pay:x.pay,cust:x.cust,recv:+x.recv,void:x.void}});
   if(r[2].data){cfg.biz=r[2].data.biz;cfg.addr=r[2].data.addr;cfg.next=r[2].data.next}
   mark()}
 async function push(){
   if(!uid)return;$('st').textContent='Guardando…';
   try{
-    var up=items.filter(function(i){return JSON.stringify(i)!==snap.p[i.id]}).map(function(i){return{id:i.id,user_id:uid,name:i.name,cat:i.cat||'',unit:i.unit,cost:i.cost,price:i.price,stock:i.stock||0,updated_at:new Date().toISOString()}});
+    var up=items.filter(function(i){return JSON.stringify(i)!==snap.p[i.id]}).map(function(i){return{id:i.id,user_id:uid,name:i.name,barcode:i.code||'',cat:i.cat||'',unit:i.unit,cost:i.cost,price:i.price,stock:i.stock||0,updated_at:new Date().toISOString()}});
     if(up.length)chk(await sb.from('products').upsert(up));
     var del=Object.keys(snap.p).filter(function(id){return !by(id)});
     if(del.length)chk(await sb.from('products').delete().in('id',del));
@@ -161,13 +161,13 @@ function by(id){return items.filter(function(x){return x.id===id})[0]}
 function show(id,on){$(id).classList[on?'add':'remove']('on')}
 function cf(msg,fn){$('dn').textContent=msg;cfn=fn;show('m2',1)}
 function setTab(t){tab=t;['sell','prod','hist'].forEach(function(n){$('v-'+n).hidden=n!==t});
-  document.querySelectorAll('nav button').forEach(function(b){b.className=b.dataset.t===t?'on':''});render()}
+  document.querySelectorAll('nav button').forEach(function(b){b.className=b.dataset.t===t?'on':''});render();if(t==='sell'&&!$('m6').classList.contains('on'))$('sc').focus()}
 document.querySelectorAll('nav button').forEach(function(b){b.onclick=function(){setTab(b.dataset.t)}});
 
 /* ---------- VENDER ---------- */
 function rSell(){
   var q=$('sq').value.toLowerCase();
-  var l=items.filter(function(i){return !q||i.name.toLowerCase().indexOf(q)>=0}).sort(function(a,b){return a.name.localeCompare(b.name)});
+  var l=items.filter(function(i){return !q||(i.name.toLowerCase().indexOf(q)>=0||(i.code||'').indexOf(q)>=0)}).sort(function(a,b){return a.name.localeCompare(b.name)});
   $('gr').innerHTML=l.length?l.map(function(i){var s=i.stock||0;
     return '<button class="tile" data-a="'+i.id+'"><b>'+esc(i.name)+'</b><small>'+money.format(i.price)+' / '+esc(i.unit)+'</small><small class="'+(s<=0?'g-bad':'')+'">Stock: '+s+' '+esc(i.unit)+'</small></button>'}).join(''):'<div class="empty">Crea productos en la pestaña Productos.</div>';
   $('cl').innerHTML=cart.length?cart.map(function(c,n){var i=by(c.id);
@@ -176,13 +176,23 @@ function rSell(){
   var r=+$('cr').value;$('cc').textContent=r>0?(r>=t?'Cambio: '+money.format(r-t):'Faltan: '+money.format(t-r)):'Cambio: $0';
 }
 function total(){return cart.reduce(function(s,c){var i=by(c.id);return s+Math.round(c.qty*i.price)},0)}
+function beep(ok){try{var a=new (window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator();o.frequency.value=ok?880:220;o.connect(a.destination);o.start();setTimeout(function(){o.stop()},ok?80:300)}catch(e){}}
+function addByCode(code){
+  var i=items.filter(function(x){return x.code===code})[0];
+  if(!i){$('sm').textContent='⚠ Código '+code+' no está registrado. Créalo en Productos.';beep(false);return}
+  $('sm').textContent='';beep(true);
+  if(i.unit==='und'){var c=cart.filter(function(x){return x.id===i.id})[0];if(c)c.qty=rd(c.qty+1);else cart.push({id:i.id,qty:1});rSell()}
+  else{qId=i.id;$('qn').textContent=i.name;$('qi').textContent=money.format(i.price)+' por '+i.unit+' · Stock: '+(i.stock||0);$('qv').value='';show('m5',1);$('qv').focus()}}
+$('sc').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();var v=this.value.trim();this.value='';if(v)addByCode(v)}};
+$('sq').onkeydown=function(e){if(e.key==='Enter'){var v=this.value.trim();if(v&&items.some(function(x){return x.code===v})){this.value='';addByCode(v);rSell()}}};
+$('fb').onkeydown=function(e){if(e.key==='Enter'){e.preventDefault();$('fn').focus()}};
 $('sq').oninput=rSell;$('cr').oninput=rSell;
 $('gr').onclick=function(e){var b=e.target.closest('[data-a]');if(!b)return;qId=b.dataset.a;var i=by(qId);
   $('qn').textContent=i.name;$('qi').textContent=money.format(i.price)+' por '+i.unit+' · Stock: '+(i.stock||0);$('qv').value='';show('m5',1);$('qv').focus()};
 document.querySelectorAll('[data-q]').forEach(function(b){b.onclick=function(){$('qv').value=b.dataset.q}});
 $('qc').onclick=function(){show('m5',0)};
 $('qa').onclick=function(){var q=+$('qv').value;if(!(q>0)){$('qv').focus();return}
-  var c=cart.filter(function(x){return x.id===qId})[0];if(c)c.qty=rd(c.qty+q);else cart.push({id:qId,qty:q});show('m5',0);rSell()};
+  var c=cart.filter(function(x){return x.id===qId})[0];if(c)c.qty=rd(c.qty+q);else cart.push({id:qId,qty:q});show('m5',0);rSell();$('sc').focus()};
 $('cl').onclick=function(e){var x=e.target.dataset.x;if(x!==undefined){cart.splice(+x,1);rSell()}};
 $('cz').onclick=function(){cart=[];$('cr').value='';rSell()};
 $('co').onclick=function(){
@@ -199,7 +209,7 @@ function rec(s){
   h+='<hr><div class="r"><b>TOTAL</b><b>'+money.format(s.total)+'</b></div><div class="r"><span>Pago</span><span>'+esc(s.pay)+'</span></div>';
   if(s.pay==='Efectivo'&&s.recv>0)h+='<div class="r"><span>Recibido</span><span>'+money.format(s.recv)+'</span></div><div class="r"><span>Cambio</span><span>'+money.format(Math.max(0,s.recv-s.total))+'</span></div>';
   h+='<hr><div style="text-align:center">¡Gracias por su compra!</div>';$('rc').innerHTML=h;show('m4',1)}
-$('rx').onclick=function(){show('m4',0)};
+$('rx').onclick=function(){show('m4',0);$('sc').focus()};
 $('pt').onclick=function(){try{window.print()}catch(e){alert('Este equipo no permite imprimir desde aquí')}};
 
 /* ---------- PRODUCTOS ---------- */
@@ -207,9 +217,9 @@ function rProd(){
   var q=$('q').value.toLowerCase(),sel=$('fc'),cur=sel.value,cats=[];
   items.forEach(function(i){if(i.cat&&cats.indexOf(i.cat)<0)cats.push(i.cat)});
   sel.innerHTML='<option value="">Todas las categorías</option>'+cats.map(function(c){return '<option'+(c===cur?' selected':'')+'>'+esc(c)+'</option>'}).join('');
-  var l=items.filter(function(i){return (!q||i.name.toLowerCase().indexOf(q)>=0)&&(!sel.value||i.cat===sel.value)}).sort(function(a,b){return a.name.localeCompare(b.name)});
+  var l=items.filter(function(i){return (!q||(i.name.toLowerCase().indexOf(q)>=0||(i.code||'').indexOf(q)>=0))&&(!sel.value||i.cat===sel.value)}).sort(function(a,b){return a.name.localeCompare(b.name)});
   $('tb').innerHTML=l.map(function(i){var k=calc(i.cost,i.price),s=i.stock||0;
-    return '<tr><td><b>'+esc(i.name)+'</b><small>'+esc(i.cat||'')+' · por '+esc(i.unit)+'</small></td><td class="'+(s<=0?'g-bad':'')+'">'+s+' '+esc(i.unit)+'</td><td>'+money.format(i.cost)+'</td><td><b>'+money.format(i.price)+'</b></td><td class="'+cls(k.mg)+'">'+money.format(k.g)+'</td><td class="'+cls(k.mg)+'">'+pct(k.mk)+'</td><td class="'+cls(k.mg)+'">'+pct(k.mg)+'</td><td class="act"><button class="sec" data-e="'+i.id+'">Editar</button><button class="del" data-d="'+i.id+'">Borrar</button></td></tr>'}).join('');
+    return '<tr><td><b>'+esc(i.name)+'</b><small>'+esc(i.cat||'')+' · por '+esc(i.unit)+(i.code?' · 🏷 '+esc(i.code):'')+'</small></td><td class="'+(s<=0?'g-bad':'')+'">'+s+' '+esc(i.unit)+'</td><td>'+money.format(i.cost)+'</td><td><b>'+money.format(i.price)+'</b></td><td class="'+cls(k.mg)+'">'+money.format(k.g)+'</td><td class="'+cls(k.mg)+'">'+pct(k.mk)+'</td><td class="'+cls(k.mg)+'">'+pct(k.mg)+'</td><td class="act"><button class="sec" data-e="'+i.id+'">Editar</button><button class="del" data-d="'+i.id+'">Borrar</button></td></tr>'}).join('');
   $('emp').style.display=items.length?'none':'block';
   var avg=items.length?items.reduce(function(s,i){return s+calc(i.cost,i.price).mk},0)/items.length:0;
   var vc=items.reduce(function(s,i){return s+Math.max(0,i.stock||0)*i.cost},0),vv=items.reduce(function(s,i){return s+Math.max(0,i.stock||0)*i.price},0);
@@ -218,7 +228,7 @@ function pv(){var c=+$('fc1').value||0,v=+$('fv').value||0,k=calc(c,v);
   $('pv').innerHTML='Ganancia: <b class="'+cls(k.mg)+'">'+money.format(k.g)+'</b> · Sobre costo: <b>'+pct(k.mk)+'</b> · Margen: <b>'+pct(k.mg)+'</b>'}
 function openForm(id){editId=id;var i=by(id)||{name:'',cat:'',unit:'kg',cost:'',price:'',stock:''};
   $('mt').textContent=id?'Editar producto':'Nuevo producto';
-  $('fn').value=i.name;$('fcat').value=i.cat||'';$('fu').value=i.unit;$('fc1').value=i.cost;$('fv').value=i.price;$('fs').value=i.stock||'';
+  $('fn').value=i.name;$('fb').value=i.code||'';$('fcat').value=i.cat||'';$('fu').value=i.unit;$('fc1').value=i.cost;$('fv').value=i.price;$('fs').value=i.stock||'';
   $('fp').value=i.cost?Math.round(calc(i.cost,i.price).mk*10)/10:'';pv();show('m1',1)}
 function onCost(){var c=+$('fc1').value,p=$('fp').value;if(c>0&&p!=='')$('fv').value=Math.round(c*(1+p/100));pv()}
 $('fc1').oninput=onCost;$('fp').oninput=onCost;
@@ -227,7 +237,9 @@ $('sv').onclick=function(){
   var n=$('fn').value.trim(),c=+$('fc1').value,v=+$('fv').value;
   if(!n){$('fn').focus();return}
   if($('fc1').value===''||$('fv').value===''){alert('Escribe el costo y la venta');return}
-  var o={name:n,cat:$('fcat').value.trim(),unit:$('fu').value,cost:c,price:v,stock:+$('fs').value||0};
+  var code=$('fb').value.trim(),dp=code&&items.filter(function(x){return x.code===code&&x.id!==editId})[0];
+  if(dp){alert('Ese código ya pertenece a: '+dp.name);return}
+  var o={code:code,name:n,cat:$('fcat').value.trim(),unit:$('fu').value,cost:c,price:v,stock:+$('fs').value||0};
   if(editId){items=items.map(function(x){return x.id===editId?Object.assign({id:editId},o):x})}
   else{o.id=Date.now().toString(36)+Math.random().toString(36).slice(2,5);items.push(o)}
   sa();render();show('m1',0)};
